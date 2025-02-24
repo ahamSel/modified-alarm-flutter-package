@@ -15,6 +15,9 @@ import android.content.pm.ServiceInfo
 import android.os.IBinder
 import android.os.PowerManager
 import android.os.Build
+import android.view.KeyEvent
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
 import com.gdelataillade.alarm.models.AlarmSettings
 import com.gdelataillade.alarm.services.AlarmRingingLiveData
 import com.gdelataillade.alarm.services.NotificationHandler
@@ -35,6 +38,7 @@ class AlarmService : Service() {
     private var vibrationService: VibrationService? = null
     private var volumeService: VolumeService? = null
     private var showSystemUI: Boolean = true
+    private var volumeKeyReceiver: BroadcastReceiver? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -43,6 +47,32 @@ class AlarmService : Service() {
         audioService = AudioService(this)
         vibrationService = VibrationService(this)
         volumeService = VolumeService(this)
+
+        // Register volume key receiver
+        registerVolumeKeyReceiver()
+    }
+
+    private fun registerVolumeKeyReceiver() {
+        volumeKeyReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent?.action == "android.media.VOLUME_CHANGED_ACTION" && ringingAlarmIds.isNotEmpty()) {
+                    // Get the previous and current volume levels
+                    val previousVolume = intent.getIntExtra("android.media.EXTRA_PREV_VOLUME_STREAM_VALUE", -1)
+                    val currentVolume = intent.getIntExtra("android.media.EXTRA_VOLUME_STREAM_VALUE", -1)
+                    
+                    // Only react if it was a volume DOWN press (current < previous)
+                    if (currentVolume != -1 && previousVolume != -1 && currentVolume < previousVolume) {
+                        ringingAlarmIds.firstOrNull()?.let { alarmId ->
+                            Log.d(TAG, "Volume DOWN pressed while alarm ringing, stopping alarm: $alarmId")
+                            handleStopAlarmCommand(alarmId)
+                        }
+                    }
+                }
+            }
+        }
+
+        val filter = IntentFilter("android.media.VOLUME_CHANGED_ACTION")
+        registerReceiver(volumeKeyReceiver, filter)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -234,6 +264,12 @@ class AlarmService : Service() {
 
     override fun onDestroy() {
         ringingAlarmIds = listOf()
+
+        // Unregister volume key receiver
+        volumeKeyReceiver?.let {
+            unregisterReceiver(it)
+            volumeKeyReceiver = null
+        }
 
         audioService?.cleanUp()
         vibrationService?.stopVibrating()
