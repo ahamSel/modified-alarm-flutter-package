@@ -71,9 +71,21 @@ class NotificationHandler(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val testIntent = Intent(context, AlarmReceiver::class.java).apply {
+            action = AlarmReceiver.ACTION_ALARM_TEST
+            putExtra("id", alarmId)
+            putExtra("notification_title", notificationSettings.title)
+        }
+        val testPendingIntent = PendingIntent.getBroadcast(
+            context,
+            1,
+            testIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         val notificationBuilder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(iconResId)
-            .setContentTitle(notificationSettings.title)
+            .setContentTitle("Reminder Alarm")
             .setContentText(notificationSettings.body)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
@@ -91,6 +103,7 @@ class NotificationHandler(private val context: Context) {
         notificationSettings.let {
             if (it.stopButton != null) {
                 notificationBuilder.addAction(0, it.stopButton, stopPendingIntent)
+                notificationBuilder.addAction(0, "Mark as Done", testPendingIntent)
             }
         }
 
